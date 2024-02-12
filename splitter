@@ -1,0 +1,1401 @@
+#!/usr/bin/env bash
+#
+# author: Spokey (c) 2024
+# license: MIT
+#
+# splitter: a script to generate UUID ranges for SQL scripts that need to update / delete many rows and would cause unacceptable locking issues
+# parameters: -n number of batches (will round up to the next power of 2)
+#                OR
+#             -t total number of expected rows
+#             -b batch size
+#                OPTIONAL
+#             -u UUID column name
+#             -s filename with SQL to prepend
+#             -f filename with SQL to prepend
+#
+# splitter can either accept a number of batches, or it can calculate the number of batches given the number of rows and a batch size.
+# In either case, it will round up to the next power of 2 if needed. So, -N 1000 will actually create 1024 batches. -T 500000 -B 500
+# would also request 1000 batches, which would round up to 1024. -N 1024 will not round up and will create 1024 batches.
+
+usage() {
+	echo "
+Usage: splitter -n <number of batches> (will round up to the next power of 2)
+                      OR
+       splitter -t <total number of expected rows> -b <batch size>
+                      OPTIONAL
+                -u <UUID column name>
+                -p <filename with SQL to prepend>
+                -a <filename with SQL to append>
+       "
+       exit 1
+}
+
+parse_args() {
+	appendset=false
+	batchset=false
+	prependset=false
+	sizeset=false
+	totalset=false
+	uuidcol=""
+
+	while getopts :a:b:n:p:t:u: flag
+	do
+	    case "${flag}" in
+		a)
+			append_file="${OPTARG}"
+			appendset=true
+			;;
+		b)
+			target_nsize="${OPTARG}"
+			sizeset=true
+			;;
+		n)
+			target_nbatch="${OPTARG}"
+			batchset=true
+			;;
+		p)
+			prepend_file="${OPTARG}"
+			prependset=true
+			;;
+		t)
+			target_ntotal="${OPTARG}"
+			totalset=true
+			;;
+		u)
+			uuidcol="${OPTARG}"
+			echo "$OPTARG ?"
+			;;
+		*)
+			usage
+			;;
+	    esac
+	done
+
+	echo $totalset
+	echo $sizeset
+	echo $batchset
+	echo $prependset
+	echo $appendset
+	echo "$uuidcol"
+
+	if [ $totalset = true ] && [ $sizeset = true ]
+        then
+                target_nbatch=$(( target_ntotal / target_nsize ))
+        fi
+}
+
+calculate_nbatch() {
+        powr=0
+        while :
+        do
+                pow2=$(( 2 ** powr ))
+                if [ $pow2 -ge $target_nbatch ]
+                then
+                        target_nbatch=$pow2
+                        break 2
+                fi
+                powr=$(( powr + 1 ))
+        done
+}
+
+calculate_sixteens() {
+        remainder=$target_nbatch
+        sixteens=0
+        while :
+        do
+                if [ $remainder -ge 16 ]
+                then
+                        sixteens=$(( sixteens + 1 ))
+                        remainder=$(( remainder / 16 ))
+echo $sixteens
+echo $remainder
+                else
+                        break 2
+                fi
+        done
+}
+
+gen_uuid_pairs() {
+        case $sixteens in
+                0)
+			case $remainder in
+				2)
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+					echo " $uuidcol > '00000000-0000-0000-0000-000000000000' AND $uuidcol <= '77777777-7777-7777-7777-777777777777'"
+					if [ $appendset = true ]
+					then
+						cat "$append_file"
+					fi
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+					echo " $uuidcol > '77777777-7777-7777-7777-777777777777' AND $uuidcol <= 'ffffffff-ffff-ffff-ffff-ffffffffffff'"
+					if [ $appendset = true ]
+					then
+						cat "$append_file"
+					fi
+					;;
+				4)
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+					echo " $uuidcol > '00000000-0000-0000-0000-000000000000' AND $uuidcol <= '33333333-3333-3333-3333-333333333333'"
+					if [ $appendset = true ]
+					then
+						cat "$append_file"
+					fi
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+					echo " $uuidcol > '33333333-3333-3333-3333-333333333333' AND $uuidcol <= '77777777-7777-7777-7777-777777777777'"
+					if [ $appendset = true ]
+					then
+						cat "$append_file"
+					fi
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+					echo " $uuidcol > '77777777-7777-7777-7777-777777777777' AND $uuidcol <= 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'"
+					if [ $appendset = true ]
+					then
+						cat "$append_file"
+					fi
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+					echo " $uuidcol > 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' AND $uuidcol <= 'ffffffff-ffff-ffff-ffff-ffffffffffff'"
+					if [ $appendset = true ]
+					then
+						cat "$append_file"
+					fi
+					;;
+				8)
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+					echo " $uuidcol > '00000000-0000-0000-0000-000000000000' AND $uuidcol <= '11111111-1111-1111-1111-111111111111'"
+					if [ $appendset = true ]
+					then
+						cat "$append_file"
+					fi
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+					echo " $uuidcol > '11111111-1111-1111-1111-111111111111' AND $uuidcol <= '33333333-3333-3333-3333-333333333333'"
+					if [ $appendset = true ]
+					then
+						cat "$append_file"
+					fi
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+					echo " $uuidcol > '33333333-3333-3333-3333-333333333333' AND $uuidcol <= '55555555-5555-5555-5555-555555555555'"
+					if [ $appendset = true ]
+					then
+						cat "$append_file"
+					fi
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+					echo " $uuidcol > '55555555-5555-5555-5555-555555555555' AND $uuidcol <= '77777777-7777-7777-7777-777777777777'"
+					if [ $appendset = true ]
+					then
+						cat "$append_file"
+					fi
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+					echo " $uuidcol > '77777777-7777-7777-7777-777777777777' AND $uuidcol <= '99999999-9999-9999-9999-999999999999'"
+					if [ $appendset = true ]
+					then
+						cat "$append_file"
+					fi
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+					echo " $uuidcol > '99999999-9999-9999-9999-999999999999' AND $uuidcol <= 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'"
+					if [ $appendset = true ]
+					then
+						cat "$append_file"
+					fi
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+					echo " $uuidcol > 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' AND $uuidcol <= 'dddddddd-dddd-dddd-dddd-dddddddddddd'"
+					if [ $appendset = true ]
+					then
+						cat "$append_file"
+					fi
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+					echo " $uuidcol > 'dddddddd-dddd-dddd-dddd-dddddddddddd' AND $uuidcol <= 'ffffffff-ffff-ffff-ffff-ffffffffffff'"
+					if [ $appendset = true ]
+					then
+						cat "$append_file"
+					fi
+					;;
+				*)
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+					echo " $uuidcol > '00000000-0000-0000-0000-000000000000' AND $uuidcol <= 'ffffffff-ffff-ffff-ffff-ffffffffffff'"
+					if [ $appendset = true ]
+					then
+						cat "$append_file"
+					fi
+					;;
+			esac
+			;;
+		1)
+			for a in 0 1 2 3 4 5 6 7 8 9 a b c d e f
+			do
+				case $remainder in
+					2)
+						if [ $prependset = true ]
+						then
+							cat "$prepend_file"
+						fi
+						echo " $uuidcol > '${a}0000000-0000-0000-0000-000000000000' AND $uuidcol <= '${a}7777777-7777-7777-7777-777777777777'"
+						if [ $appendset = true ]
+						then
+							cat "$append_file"
+						fi
+						if [ $prependset = true ]
+						then
+							cat "$prepend_file"
+						fi
+						echo " $uuidcol > '${a}7777777-7777-7777-7777-777777777777' AND $uuidcol <= '${a}fffffff-ffff-ffff-ffff-ffffffffffff'"
+						if [ $appendset = true ]
+						then
+							cat "$append_file"
+						fi
+						;;
+					4)
+						if [ $prependset = true ]
+						then
+							cat "$prepend_file"
+						fi
+						echo " $uuidcol > '${a}0000000-0000-0000-0000-000000000000' AND $uuidcol <= '${a}3333333-3333-3333-3333-333333333333'"
+						if [ $appendset = true ]
+						then
+							cat "$append_file"
+						fi
+						if [ $prependset = true ]
+						then
+							cat "$prepend_file"
+						fi
+						echo " $uuidcol > '${a}3333333-3333-3333-3333-333333333333' AND $uuidcol <= '${a}7777777-7777-7777-7777-777777777777'"
+						if [ $appendset = true ]
+						then
+							cat "$append_file"
+						fi
+						if [ $prependset = true ]
+						then
+							cat "$prepend_file"
+						fi
+						echo " $uuidcol > '${a}7777777-7777-7777-7777-777777777777' AND $uuidcol <= '${a}bbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'"
+						if [ $appendset = true ]
+						then
+							cat "$append_file"
+						fi
+						if [ $prependset = true ]
+						then
+							cat "$prepend_file"
+						fi
+						echo " $uuidcol > '${a}bbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' AND $uuidcol <= '${a}fffffff-ffff-ffff-ffff-ffffffffffff'"
+						if [ $appendset = true ]
+						then
+							cat "$append_file"
+						fi
+						;;
+					8)
+						if [ $prependset = true ]
+						then
+							cat "$prepend_file"
+						fi
+						echo " $uuidcol > '${a}0000000-0000-0000-0000-000000000000' AND $uuidcol <= '${a}1111111-1111-1111-1111-111111111111'"
+						if [ $appendset = true ]
+						then
+							cat "$append_file"
+						fi
+						if [ $prependset = true ]
+						then
+							cat "$prepend_file"
+						fi
+						echo " $uuidcol > '${a}1111111-1111-1111-1111-111111111111' AND $uuidcol <= '${a}3333333-3333-3333-3333-333333333333'"
+						if [ $appendset = true ]
+						then
+							cat "$append_file"
+						fi
+						if [ $prependset = true ]
+						then
+							cat "$prepend_file"
+						fi
+						echo " $uuidcol > '${a}3333333-3333-3333-3333-333333333333' AND $uuidcol <= '${a}5555555-5555-5555-5555-555555555555'"
+						if [ $appendset = true ]
+						then
+							cat "$append_file"
+						fi
+						if [ $prependset = true ]
+						then
+							cat "$prepend_file"
+						fi
+						echo " $uuidcol > '${a}5555555-5555-5555-5555-555555555555' AND $uuidcol <= '${a}7777777-7777-7777-7777-777777777777'"
+						if [ $appendset = true ]
+						then
+							cat "$append_file"
+						fi
+						if [ $prependset = true ]
+						then
+							cat "$prepend_file"
+						fi
+						echo " $uuidcol > '${a}7777777-7777-7777-7777-777777777777' AND $uuidcol <= '${a}9999999-9999-9999-9999-999999999999'"
+						if [ $appendset = true ]
+						then
+							cat "$append_file"
+						fi
+						if [ $prependset = true ]
+						then
+							cat "$prepend_file"
+						fi
+						echo " $uuidcol > '${a}9999999-9999-9999-9999-999999999999' AND $uuidcol <= '${a}bbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'"
+						if [ $appendset = true ]
+						then
+							cat "$append_file"
+						fi
+						if [ $prependset = true ]
+						then
+							cat "$prepend_file"
+						fi
+						echo " $uuidcol > '${a}bbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' AND $uuidcol <= '${a}ddddddd-dddd-dddd-dddd-dddddddddddd'"
+						if [ $appendset = true ]
+						then
+							cat "$append_file"
+						fi
+						if [ $prependset = true ]
+						then
+							cat "$prepend_file"
+						fi
+						echo " $uuidcol > '${a}ddddddd-dddd-dddd-dddd-dddddddddddd' AND $uuidcol <= '${a}fffffff-ffff-ffff-ffff-ffffffffffff'"
+						if [ $appendset = true ]
+						then
+							cat "$append_file"
+						fi
+						;;
+					*)
+						if [ $prependset = true ]
+						then
+							cat "$prepend_file"
+						fi
+						echo " $uuidcol > '${a}0000000-0000-0000-0000-000000000000' AND $uuidcol <= '${a}fffffff-ffff-ffff-ffff-ffffffffffff'"
+						if [ $appendset = true ]
+						then
+							cat "$append_file"
+						fi
+						;;
+				esac
+			done
+			;;
+		2)
+			for a in 0 1 2 3 4 5 6 7 8 9 a b c d e f
+			do
+				for b in 0 1 2 3 4 5 6 7 8 9 a b c d e f
+				do
+					case $remainder in
+						2)
+							if [ $prependset = true ]
+							then
+								cat "$prepend_file"
+							fi
+							echo " $uuidcol > '${a}${b}000000-0000-0000-0000-000000000000' AND $uuidcol <= '${a}${b}777777-7777-7777-7777-777777777777'"
+							if [ $appendset = true ]
+							then
+								cat "$append_file"
+							fi
+							if [ $prependset = true ]
+							then
+								cat "$prepend_file"
+							fi
+							echo " $uuidcol > '${a}${b}777777-7777-7777-7777-777777777777' AND $uuidcol <= '${a}${b}ffffff-ffff-ffff-ffff-ffffffffffff'"
+							if [ $appendset = true ]
+							then
+								cat "$append_file"
+							fi
+							;;
+						4)
+							if [ $prependset = true ]
+							then
+								cat "$prepend_file"
+							fi
+							echo " $uuidcol > '${a}${b}000000-0000-0000-0000-000000000000' AND $uuidcol <= '${a}${b}333333-3333-3333-3333-333333333333'"
+							if [ $appendset = true ]
+							then
+								cat "$append_file"
+							fi
+							if [ $prependset = true ]
+							then
+								cat "$prepend_file"
+							fi
+							echo " $uuidcol > '${a}${b}333333-3333-3333-3333-333333333333' AND $uuidcol <= '${a}${b}777777-7777-7777-7777-777777777777'"
+							if [ $appendset = true ]
+							then
+								cat "$append_file"
+							fi
+							if [ $prependset = true ]
+							then
+								cat "$prepend_file"
+							fi
+							echo " $uuidcol > '${a}${b}777777-7777-7777-7777-777777777777' AND $uuidcol <= '${a}${b}bbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'"
+							if [ $appendset = true ]
+							then
+								cat "$append_file"
+							fi
+							if [ $prependset = true ]
+							then
+								cat "$prepend_file"
+							fi
+							echo " $uuidcol > '${a}${b}bbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' AND $uuidcol <= '${a}${b}ffffff-ffff-ffff-ffff-ffffffffffff'"
+							if [ $appendset = true ]
+							then
+								cat "$append_file"
+							fi
+							;;
+						8)
+							if [ $prependset = true ]
+							then
+								cat "$prepend_file"
+							fi
+							echo " $uuidcol > '${a}${b}000000-0000-0000-0000-000000000000' AND $uuidcol <= '${a}${b}111111-1111-1111-1111-111111111111'"
+							if [ $appendset = true ]
+							then
+								cat "$append_file"
+							fi
+							if [ $prependset = true ]
+							then
+								cat "$prepend_file"
+							fi
+							echo " $uuidcol > '${a}${b}111111-1111-1111-1111-111111111111' AND $uuidcol <= '${a}${b}333333-3333-3333-3333-333333333333'"
+							if [ $appendset = true ]
+							then
+								cat "$append_file"
+							fi
+							if [ $prependset = true ]
+							then
+								cat "$prepend_file"
+							fi
+							echo " $uuidcol > '${a}${b}333333-3333-3333-3333-333333333333' AND $uuidcol <= '${a}${b}555555-5555-5555-5555-555555555555'"
+							if [ $appendset = true ]
+							then
+								cat "$append_file"
+							fi
+							if [ $prependset = true ]
+							then
+								cat "$prepend_file"
+							fi
+							echo " $uuidcol > '${a}${b}555555-5555-5555-5555-555555555555' AND $uuidcol <= '${a}${b}777777-7777-7777-7777-777777777777'"
+							if [ $appendset = true ]
+							then
+								cat "$append_file"
+							fi
+							if [ $prependset = true ]
+							then
+								cat "$prepend_file"
+							fi
+							echo " $uuidcol > '${a}${b}777777-7777-7777-7777-777777777777' AND $uuidcol <= '${a}${b}999999-9999-9999-9999-999999999999'"
+							if [ $appendset = true ]
+							then
+								cat "$append_file"
+							fi
+							if [ $prependset = true ]
+							then
+								cat "$prepend_file"
+							fi
+							echo " $uuidcol > '${a}${b}999999-9999-9999-9999-999999999999' AND $uuidcol <= '${a}${b}bbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'"
+							if [ $appendset = true ]
+							then
+								cat "$append_file"
+							fi
+							if [ $prependset = true ]
+							then
+								cat "$prepend_file"
+							fi
+							echo " $uuidcol > '${a}${b}bbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' AND $uuidcol <= '${a}${b}dddddd-dddd-dddd-dddd-dddddddddddd'"
+							if [ $appendset = true ]
+							then
+								cat "$append_file"
+							fi
+							if [ $prependset = true ]
+							then
+								cat "$prepend_file"
+							fi
+							echo " $uuidcol > '${a}${b}dddddd-dddd-dddd-dddd-dddddddddddd' AND $uuidcol <= '${a}${b}ffffff-ffff-ffff-ffff-ffffffffffff'"
+							if [ $appendset = true ]
+							then
+								cat "$append_file"
+							fi
+							;;
+						*)
+							if [ $prependset = true ]
+							then
+								cat "$prepend_file"
+							fi
+							echo " $uuidcol > '${a}${b}000000-0000-0000-0000-000000000000' AND $uuidcol <= '${a}${b}ffffff-ffff-ffff-ffff-ffffffffffff'"
+							if [ $appendset = true ]
+							then
+								cat "$append_file"
+							fi
+							;;
+					esac
+				done
+			done
+			;;
+		3)
+			for a in 0 1 2 3 4 5 6 7 8 9 a b c d e f
+			do
+				for b in 0 1 2 3 4 5 6 7 8 9 a b c d e f
+				do
+					for c in 0 1 2 3 4 5 6 7 8 9 a b c d e f
+					do
+						case $remainder in
+							2)
+								if [ $prependset = true ]
+								then
+									cat "$prepend_file"
+								fi
+								echo " $uuidcol > '${a}${b}${c}00000-0000-0000-0000-000000000000' AND $uuidcol <= '${a}${b}${c}77777-7777-7777-7777-777777777777'"
+								if [ $appendset = true ]
+								then
+									cat "$append_file"
+								fi
+								if [ $prependset = true ]
+								then
+									cat "$prepend_file"
+								fi
+								echo " $uuidcol > '${a}${b}${c}77777-7777-7777-7777-777777777777' AND $uuidcol <= '${a}${b}${c}fffff-ffff-ffff-ffff-ffffffffffff'"
+								if [ $appendset = true ]
+								then
+									cat "$append_file"
+								fi
+								;;
+							4)
+								if [ $prependset = true ]
+								then
+									cat "$prepend_file"
+								fi
+								echo " $uuidcol > '${a}${b}${c}00000-0000-0000-0000-000000000000' AND $uuidcol <= '${a}${b}${c}33333-3333-3333-3333-333333333333'"
+								if [ $appendset = true ]
+								then
+									cat "$append_file"
+								fi
+								if [ $prependset = true ]
+								then
+									cat "$prepend_file"
+								fi
+								echo " $uuidcol > '${a}${b}${c}33333-3333-3333-3333-333333333333' AND $uuidcol <= '${a}${b}${c}77777-7777-7777-7777-777777777777'"
+								if [ $appendset = true ]
+								then
+									cat "$append_file"
+								fi
+								if [ $prependset = true ]
+								then
+									cat "$prepend_file"
+								fi
+								echo " $uuidcol > '${a}${b}${c}77777-7777-7777-7777-777777777777' AND $uuidcol <= '${a}${b}${c}bbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'"
+								if [ $appendset = true ]
+								then
+									cat "$append_file"
+								fi
+								if [ $prependset = true ]
+								then
+									cat "$prepend_file"
+								fi
+								echo " $uuidcol > '${a}${b}${c}bbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' AND $uuidcol <= '${a}${b}${c}fffff-ffff-ffff-ffff-ffffffffffff'"
+								if [ $appendset = true ]
+								then
+									cat "$append_file"
+								fi
+								;;
+							8)
+								if [ $prependset = true ]
+								then
+									cat "$prepend_file"
+								fi
+								echo " $uuidcol > '${a}${b}${c}00000-0000-0000-0000-000000000000' AND $uuidcol <= '${a}${b}${c}11111-1111-1111-1111-111111111111'"
+								if [ $appendset = true ]
+								then
+									cat "$append_file"
+								fi
+								if [ $prependset = true ]
+								then
+									cat "$prepend_file"
+								fi
+								echo " $uuidcol > '${a}${b}${c}11111-1111-1111-1111-111111111111' AND $uuidcol <= '${a}${b}${c}33333-3333-3333-3333-333333333333'"
+								if [ $appendset = true ]
+								then
+									cat "$append_file"
+								fi
+								if [ $prependset = true ]
+								then
+									cat "$prepend_file"
+								fi
+								echo " $uuidcol > '${a}${b}${c}33333-3333-3333-3333-333333333333' AND $uuidcol <= '${a}${b}${c}55555-5555-5555-5555-555555555555'"
+								if [ $appendset = true ]
+								then
+									cat "$append_file"
+								fi
+								if [ $prependset = true ]
+								then
+									cat "$prepend_file"
+								fi
+								echo " $uuidcol > '${a}${b}${c}55555-5555-5555-5555-555555555555' AND $uuidcol <= '${a}${b}${c}77777-7777-7777-7777-777777777777'"
+								if [ $appendset = true ]
+								then
+									cat "$append_file"
+								fi
+								if [ $prependset = true ]
+								then
+									cat "$prepend_file"
+								fi
+								echo " $uuidcol > '${a}${b}${c}77777-7777-7777-7777-777777777777' AND $uuidcol <= '${a}${b}${c}99999-9999-9999-9999-999999999999'"
+								if [ $appendset = true ]
+								then
+									cat "$append_file"
+								fi
+								if [ $prependset = true ]
+								then
+									cat "$prepend_file"
+								fi
+								echo " $uuidcol > '${a}${b}${c}99999-9999-9999-9999-999999999999' AND $uuidcol <= '${a}${b}${c}bbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'"
+								if [ $appendset = true ]
+								then
+									cat "$append_file"
+								fi
+								if [ $prependset = true ]
+								then
+									cat "$prepend_file"
+								fi
+								echo " $uuidcol > '${a}${b}${c}bbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' AND $uuidcol <= '${a}${b}${c}ddddd-dddd-dddd-dddd-dddddddddddd'"
+								if [ $appendset = true ]
+								then
+									cat "$append_file"
+								fi
+								if [ $prependset = true ]
+								then
+									cat "$prepend_file"
+								fi
+								echo " $uuidcol > '${a}${b}${c}ddddd-dddd-dddd-dddd-dddddddddddd' AND $uuidcol <= '${a}${b}${c}fffff-ffff-ffff-ffff-ffffffffffff'"
+								if [ $appendset = true ]
+								then
+									cat "$append_file"
+								fi
+								;;
+							*)
+								if [ $prependset = true ]
+								then
+									cat "$prepend_file"
+								fi
+								echo " $uuidcol > '${a}${b}${c}00000-0000-0000-0000-000000000000' AND $uuidcol <= '${a}${b}${c}fffff-ffff-ffff-ffff-ffffffffffff'"
+								if [ $appendset = true ]
+								then
+									cat "$append_file"
+								fi
+								;;
+						esac
+					done
+				done
+			done
+			;;
+		4)
+			for a in 0 1 2 3 4 5 6 7 8 9 a b c d e f
+			do
+				for b in 0 1 2 3 4 5 6 7 8 9 a b c d e f
+				do
+					for c in 0 1 2 3 4 5 6 7 8 9 a b c d e f
+					do
+						for d in 0 1 2 3 4 5 6 7 8 9 a b c d e f
+						do
+							case $remainder in
+								2)
+									if [ $prependset = true ]
+									then
+										cat "$prepend_file"
+									fi
+									echo " $uuidcol > '${a}${b}${c}${d}0000-0000-0000-0000-000000000000' AND $uuidcol <= '${a}${b}${c}${d}7777-7777-7777-7777-777777777777'"
+									if [ $appendset = true ]
+									then
+										cat "$append_file"
+									fi
+									if [ $prependset = true ]
+									then
+										cat "$prepend_file"
+									fi
+									echo " $uuidcol > '${a}${b}${c}${d}7777-7777-7777-7777-777777777777' AND $uuidcol <= '${a}${b}${c}${d}ffff-ffff-ffff-ffff-ffffffffffff'"
+									if [ $appendset = true ]
+									then
+										cat "$append_file"
+									fi
+									;;
+								4)
+									if [ $prependset = true ]
+									then
+										cat "$prepend_file"
+									fi
+									echo " $uuidcol > '${a}${b}${c}${d}0000-0000-0000-0000-000000000000' AND $uuidcol <= '${a}${b}${c}${d}3333-3333-3333-3333-333333333333'"
+									if [ $appendset = true ]
+									then
+										cat "$append_file"
+									fi
+									if [ $prependset = true ]
+									then
+										cat "$prepend_file"
+									fi
+									echo " $uuidcol > '${a}${b}${c}${d}3333-3333-3333-3333-333333333333' AND $uuidcol <= '${a}${b}${c}${d}7777-7777-7777-7777-777777777777'"
+									if [ $appendset = true ]
+									then
+										cat "$append_file"
+									fi
+									if [ $prependset = true ]
+									then
+										cat "$prepend_file"
+									fi
+									echo " $uuidcol > '${a}${b}${c}${d}7777-7777-7777-7777-777777777777' AND $uuidcol <= '${a}${b}${c}${d}bbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'"
+									if [ $appendset = true ]
+									then
+										cat "$append_file"
+									fi
+									if [ $prependset = true ]
+									then
+										cat "$prepend_file"
+									fi
+									echo " $uuidcol > '${a}${b}${c}${d}bbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' AND $uuidcol <= '${a}${b}${c}${d}ffff-ffff-ffff-ffff-ffffffffffff'"
+									if [ $appendset = true ]
+									then
+										cat "$append_file"
+									fi
+									;;
+								8)
+									if [ $prependset = true ]
+									then
+										cat "$prepend_file"
+									fi
+									echo " $uuidcol > '${a}${b}${c}${d}0000-0000-0000-0000-000000000000' AND $uuidcol <= '${a}${b}${c}${d}1111-1111-1111-1111-111111111111'"
+									if [ $appendset = true ]
+									then
+										cat "$append_file"
+									fi
+									if [ $prependset = true ]
+									then
+										cat "$prepend_file"
+									fi
+									echo " $uuidcol > '${a}${b}${c}${d}1111-1111-1111-1111-111111111111' AND $uuidcol <= '${a}${b}${c}${d}3333-3333-3333-3333-333333333333'"
+									if [ $appendset = true ]
+									then
+										cat "$append_file"
+									fi
+									if [ $prependset = true ]
+									then
+										cat "$prepend_file"
+									fi
+									echo " $uuidcol > '${a}${b}${c}${d}3333-3333-3333-3333-333333333333' AND $uuidcol <= '${a}${b}${c}${d}5555-5555-5555-5555-555555555555'"
+									if [ $appendset = true ]
+									then
+										cat "$append_file"
+									fi
+									if [ $prependset = true ]
+									then
+										cat "$prepend_file"
+									fi
+									echo " $uuidcol > '${a}${b}${c}${d}5555-5555-5555-5555-555555555555' AND $uuidcol <= '${a}${b}${c}${d}7777-7777-7777-7777-777777777777'"
+									if [ $appendset = true ]
+									then
+										cat "$append_file"
+									fi
+									if [ $prependset = true ]
+									then
+										cat "$prepend_file"
+									fi
+									echo " $uuidcol > '${a}${b}${c}${d}7777-7777-7777-7777-777777777777' AND $uuidcol <= '${a}${b}${c}${d}9999-9999-9999-9999-999999999999'"
+									if [ $appendset = true ]
+									then
+										cat "$append_file"
+									fi
+									if [ $prependset = true ]
+									then
+										cat "$prepend_file"
+									fi
+									echo " $uuidcol > '${a}${b}${c}${d}9999-9999-9999-9999-999999999999' AND $uuidcol <= '${a}${b}${c}${d}bbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'"
+									if [ $appendset = true ]
+									then
+										cat "$append_file"
+									fi
+									if [ $prependset = true ]
+									then
+										cat "$prepend_file"
+									fi
+									echo " $uuidcol > '${a}${b}${c}${d}bbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' AND $uuidcol <= '${a}${b}${c}${d}dddd-dddd-dddd-dddd-dddddddddddd'"
+									if [ $appendset = true ]
+									then
+										cat "$append_file"
+									fi
+									if [ $prependset = true ]
+									then
+										cat "$prepend_file"
+									fi
+									echo " $uuidcol > '${a}${b}${c}${d}dddd-dddd-dddd-dddd-dddddddddddd' AND $uuidcol <= '${a}${b}${c}${d}ffff-ffff-ffff-ffff-ffffffffffff'"
+									if [ $appendset = true ]
+									then
+										cat "$append_file"
+									fi
+									;;
+								*)
+									if [ $prependset = true ]
+									then
+										cat "$prepend_file"
+									fi
+									echo " $uuidcol > '${a}${b}${c}${d}0000-0000-0000-0000-000000000000' AND $uuidcol <= '${a}${b}${c}${d}ffff-ffff-ffff-ffff-ffffffffffff'"
+									if [ $appendset = true ]
+									then
+										cat "$append_file"
+									fi
+									;;
+							esac
+						done
+					done
+				done
+			done
+			;;
+		5)
+			for a in 0 1 2 3 4 5 6 7 8 9 a b c d e f
+			do
+				for b in 0 1 2 3 4 5 6 7 8 9 a b c d e f
+				do
+					for c in 0 1 2 3 4 5 6 7 8 9 a b c d e f
+					do
+						for d in 0 1 2 3 4 5 6 7 8 9 a b c d e f
+						do
+							for e in 0 1 2 3 4 5 6 7 8 9 a b c d e f
+							do
+								case $remainder in
+									2)
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+										echo " $uuidcol > '${a}${b}${c}${d}${e}000-0000-0000-0000-000000000000' AND $uuidcol <= '${a}${b}${c}${d}${e}777-7777-7777-7777-777777777777'"
+										if [ $appendset = true ]
+										then
+											cat "$append_file"
+										fi
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+										echo " $uuidcol > '${a}${b}${c}${d}${e}777-7777-7777-7777-777777777777' AND $uuidcol <= '${a}${b}${c}${d}${e}fff-ffff-ffff-ffff-ffffffffffff'"
+										if [ $appendset = true ]
+										then
+											cat "$append_file"
+										fi
+										;;
+									4)
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+										echo " $uuidcol > '${a}${b}${c}${d}${e}000-0000-0000-0000-000000000000' AND $uuidcol <= '${a}${b}${c}${d}${e}333-3333-3333-3333-333333333333'"
+										if [ $appendset = true ]
+										then
+											cat "$append_file"
+										fi
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+										echo " $uuidcol > '${a}${b}${c}${d}${e}333-3333-3333-3333-333333333333' AND $uuidcol <= '${a}${b}${c}${d}${e}777-7777-7777-7777-777777777777'"
+										if [ $appendset = true ]
+										then
+											cat "$append_file"
+										fi
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+										echo " $uuidcol > '${a}${b}${c}${d}${e}777-7777-7777-7777-777777777777' AND $uuidcol <= '${a}${b}${c}${d}${e}bbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'"
+										if [ $appendset = true ]
+										then
+											cat "$append_file"
+										fi
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+										echo " $uuidcol > '${a}${b}${c}${d}${e}bbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' AND $uuidcol <= '${a}${b}${c}${d}${e}fff-ffff-ffff-ffff-ffffffffffff'"
+										if [ $appendset = true ]
+										then
+											cat "$append_file"
+										fi
+										;;
+									8)
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+										echo " $uuidcol > '${a}${b}${c}${d}${e}000-0000-0000-0000-000000000000' AND $uuidcol <= '${a}${b}${c}${d}${e}111-1111-1111-1111-111111111111'"
+										if [ $appendset = true ]
+										then
+											cat "$append_file"
+										fi
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+										echo " $uuidcol > '${a}${b}${c}${d}${e}111-1111-1111-1111-111111111111' AND $uuidcol <= '${a}${b}${c}${d}${e}333-3333-3333-3333-333333333333'"
+										if [ $appendset = true ]
+										then
+											cat "$append_file"
+										fi
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+										echo " $uuidcol > '${a}${b}${c}${d}${e}333-3333-3333-3333-333333333333' AND $uuidcol <= '${a}${b}${c}${d}${e}555-5555-5555-5555-555555555555'"
+										if [ $appendset = true ]
+										then
+											cat "$append_file"
+										fi
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+										echo " $uuidcol > '${a}${b}${c}${d}${e}555-5555-5555-5555-555555555555' AND $uuidcol <= '${a}${b}${c}${d}${e}777-7777-7777-7777-777777777777'"
+										if [ $appendset = true ]
+										then
+											cat "$append_file"
+										fi
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+										echo " $uuidcol > '${a}${b}${c}${d}${e}777-7777-7777-7777-777777777777' AND $uuidcol <= '${a}${b}${c}${d}${e}999-9999-9999-9999-999999999999'"
+										if [ $appendset = true ]
+										then
+											cat "$append_file"
+										fi
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+										echo " $uuidcol > '${a}${b}${c}${d}${e}999-9999-9999-9999-999999999999' AND $uuidcol <= '${a}${b}${c}${d}${e}bbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'"
+										if [ $appendset = true ]
+										then
+											cat "$append_file"
+										fi
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+										echo " $uuidcol > '${a}${b}${c}${d}${e}bbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' AND $uuidcol <= '${a}${b}${c}${d}${e}ddd-dddd-dddd-dddd-dddddddddddd'"
+										if [ $appendset = true ]
+										then
+											cat "$append_file"
+										fi
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+										echo " $uuidcol > '${a}${b}${c}${d}${e}ddd-dddd-dddd-dddd-dddddddddddd' AND $uuidcol <= '${a}${b}${c}${d}${e}fff-ffff-ffff-ffff-ffffffffffff'"
+										if [ $appendset = true ]
+										then
+											cat "$append_file"
+										fi
+										;;
+									*)
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+										echo " $uuidcol > '${a}${b}${c}${d}${e}000-0000-0000-0000-000000000000' AND $uuidcol <= '${a}${b}${c}${d}${e}fff-ffff-ffff-ffff-ffffffffffff'"
+										if [ $appendset = true ]
+										then
+											cat "$append_file"
+										fi
+										;;
+								esac
+							done
+						done
+					done
+				done
+			done
+			;;
+		6)
+			for a in 0 1 2 3 4 5 6 7 8 9 a b c d e f
+			do
+				for b in 0 1 2 3 4 5 6 7 8 9 a b c d e f
+				do
+					for c in 0 1 2 3 4 5 6 7 8 9 a b c d e f
+					do
+						for d in 0 1 2 3 4 5 6 7 8 9 a b c d e f
+						do
+							for e in 0 1 2 3 4 5 6 7 8 9 a b c d e f
+							do
+								for f in 0 1 2 3 4 5 6 7 8 9 a b c d e f
+								do
+									case $remainder in
+										2)
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+											echo " $uuidcol > '${a}${b}${c}${d}${e}${f}00-0000-0000-0000-000000000000' AND $uuidcol <= '${a}${b}${c}${d}${e}${f}77-7777-7777-7777-777777777777'"
+											if [ $appendset = true ]
+											then
+												cat "$append_file"
+											fi
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+											echo " $uuidcol > '${a}${b}${c}${d}${e}${f}77-7777-7777-7777-777777777777' AND $uuidcol <= '${a}${b}${c}${d}${e}${f}ff-ffff-ffff-ffff-ffffffffffff'"
+											if [ $appendset = true ]
+											then
+												cat "$append_file"
+											fi
+											;;
+										4)
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+											echo " $uuidcol > '${a}${b}${c}${d}${e}${f}00-0000-0000-0000-000000000000' AND $uuidcol <= '${a}${b}${c}${d}${e}${f}33-3333-3333-3333-333333333333'"
+											if [ $appendset = true ]
+											then
+												cat "$append_file"
+											fi
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+											echo " $uuidcol > '${a}${b}${c}${d}${e}${f}33-3333-3333-3333-333333333333' AND $uuidcol <= '${a}${b}${c}${d}${e}${f}77-7777-7777-7777-777777777777'"
+											if [ $appendset = true ]
+											then
+												cat "$append_file"
+											fi
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+											echo " $uuidcol > '${a}${b}${c}${d}${e}${f}77-7777-7777-7777-777777777777' AND $uuidcol <= '${a}${b}${c}${d}${e}${f}bb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'"
+											if [ $appendset = true ]
+											then
+												cat "$append_file"
+											fi
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+											echo " $uuidcol > '${a}${b}${c}${d}${e}${f}bb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' AND $uuidcol <= '${a}${b}${c}${d}${e}${f}ff-ffff-ffff-ffff-ffffffffffff'"
+											if [ $appendset = true ]
+											then
+												cat "$append_file"
+											fi
+											;;
+										8)
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+											echo " $uuidcol > '${a}${b}${c}${d}${e}${f}00-0000-0000-0000-000000000000' AND $uuidcol <= '${a}${b}${c}${d}${e}${f}11-1111-1111-1111-111111111111'"
+											if [ $appendset = true ]
+											then
+												cat "$append_file"
+											fi
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+											echo " $uuidcol > '${a}${b}${c}${d}${e}${f}11-1111-1111-1111-111111111111' AND $uuidcol <= '${a}${b}${c}${d}${e}${f}33-3333-3333-3333-333333333333'"
+											if [ $appendset = true ]
+											then
+												cat "$append_file"
+											fi
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+											echo " $uuidcol > '${a}${b}${c}${d}${e}${f}33-3333-3333-3333-333333333333' AND $uuidcol <= '${a}${b}${c}${d}${e}${f}55-5555-5555-5555-555555555555'"
+											if [ $appendset = true ]
+											then
+												cat "$append_file"
+											fi
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+											echo " $uuidcol > '${a}${b}${c}${d}${e}${f}55-5555-5555-5555-555555555555' AND $uuidcol <= '${a}${b}${c}${d}${e}${f}77-7777-7777-7777-777777777777'"
+											if [ $appendset = true ]
+											then
+												cat "$append_file"
+											fi
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+											echo " $uuidcol > '${a}${b}${c}${d}${e}${f}77-7777-7777-7777-777777777777' AND $uuidcol <= '${a}${b}${c}${d}${e}${f}99-9999-9999-9999-999999999999'"
+											if [ $appendset = true ]
+											then
+												cat "$append_file"
+											fi
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+											echo " $uuidcol > '${a}${b}${c}${d}${e}${f}99-9999-9999-9999-999999999999' AND $uuidcol <= '${a}${b}${c}${d}${e}${f}bb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'"
+											if [ $appendset = true ]
+											then
+												cat "$append_file"
+											fi
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+											echo " $uuidcol > '${a}${b}${c}${d}${e}${f}bb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' AND $uuidcol <= '${a}${b}${c}${d}${e}${f}dd-dddd-dddd-dddd-dddddddddddd'"
+											if [ $appendset = true ]
+											then
+												cat "$append_file"
+											fi
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+											echo " $uuidcol > '${a}${b}${c}${d}${e}${f}dd-dddd-dddd-dddd-dddddddddddd' AND $uuidcol <= '${a}${b}${c}${d}${e}${f}ff-ffff-ffff-ffff-ffffffffffff'"
+											if [ $appendset = true ]
+											then
+												cat "$append_file"
+											fi
+											;;
+										*)
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+											echo " $uuidcol > '${a}${b}${c}${d}${e}${f}00-0000-0000-0000-000000000000' AND $uuidcol <= '${a}${b}${c}${d}${e}${f}ff-ffff-ffff-ffff-ffffffffffff'"
+											if [ $appendset = true ]
+											then
+												cat "$append_file"
+											fi
+											;;
+									esac
+								done
+							done
+						done
+					done
+				done
+			done
+			;;
+		7)
+			for a in 0 1 2 3 4 5 6 7 8 9 a b c d e f
+			do
+				for b in 0 1 2 3 4 5 6 7 8 9 a b c d e f
+				do
+					for c in 0 1 2 3 4 5 6 7 8 9 a b c d e f
+					do
+						for d in 0 1 2 3 4 5 6 7 8 9 a b c d e f
+						do
+							for e in 0 1 2 3 4 5 6 7 8 9 a b c d e f
+							do
+								for f in 0 1 2 3 4 5 6 7 8 9 a b c d e f
+								do
+									for g in 0 1 2 3 4 5 6 7 8 9 a b c d e f
+									do
+										case $remainder in
+											2)
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+												echo " $uuidcol > '${a}${b}${c}${d}${e}${f}${g}0-0000-0000-0000-000000000000' AND $uuidcol <= '${a}${b}${c}${d}${e}${f}${g}7-7777-7777-7777-777777777777'"
+												if [ $appendset = true ]
+												then
+													cat "$append_file"
+												fi
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+												echo " $uuidcol > '${a}${b}${c}${d}${e}${f}${g}7-7777-7777-7777-777777777777' AND $uuidcol <= '${a}${b}${c}${d}${e}${f}${g}f-ffff-ffff-ffff-ffffffffffff'"
+												if [ $appendset = true ]
+												then
+													cat "$append_file"
+												fi
+												;;
+											4)
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+												echo " $uuidcol > '${a}${b}${c}${d}${e}${f}${g}0-0000-0000-0000-000000000000' AND $uuidcol <= '${a}${b}${c}${d}${e}${f}${g}3-3333-3333-3333-333333333333'"
+												if [ $appendset = true ]
+												then
+													cat "$append_file"
+												fi
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+												echo " $uuidcol > '${a}${b}${c}${d}${e}${f}${g}3-3333-3333-3333-333333333333' AND $uuidcol <= '${a}${b}${c}${d}${e}${f}${g}7-7777-7777-7777-777777777777'"
+												if [ $appendset = true ]
+												then
+													cat "$append_file"
+												fi
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+												echo " $uuidcol > '${a}${b}${c}${d}${e}${f}${g}7-7777-7777-7777-777777777777' AND $uuidcol <= '${a}${b}${c}${d}${e}${f}${g}b-bbbb-bbbb-bbbb-bbbbbbbbbbbb'"
+												if [ $appendset = true ]
+												then
+													cat "$append_file"
+												fi
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+												echo " $uuidcol > '${a}${b}${c}${d}${e}${f}${g}b-bbbb-bbbb-bbbb-bbbbbbbbbbbb' AND $uuidcol <= '${a}${b}${c}${d}${e}${f}${g}f-ffff-ffff-ffff-ffffffffffff'"
+												if [ $appendset = true ]
+												then
+													cat "$append_file"
+												fi
+												;;
+											8)
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+												echo " $uuidcol > '${a}${b}${c}${d}${e}${f}${g}0-0000-0000-0000-000000000000' AND $uuidcol <= '${a}${b}${c}${d}${e}${f}${g}1-1111-1111-1111-111111111111'"
+												if [ $appendset = true ]
+												then
+													cat "$append_file"
+												fi
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+												echo " $uuidcol > '${a}${b}${c}${d}${e}${f}${g}1-1111-1111-1111-111111111111' AND $uuidcol <= '${a}${b}${c}${d}${e}${f}${g}3-3333-3333-3333-333333333333'"
+												if [ $appendset = true ]
+												then
+													cat "$append_file"
+												fi
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+												echo " $uuidcol > '${a}${b}${c}${d}${e}${f}${g}3-3333-3333-3333-333333333333' AND $uuidcol <= '${a}${b}${c}${d}${e}${f}${g}5-5555-5555-5555-555555555555'"
+												if [ $appendset = true ]
+												then
+													cat "$append_file"
+												fi
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+												echo " $uuidcol > '${a}${b}${c}${d}${e}${f}${g}5-5555-5555-5555-555555555555' AND $uuidcol <= '${a}${b}${c}${d}${e}${f}${g}7-7777-7777-7777-777777777777'"
+												if [ $appendset = true ]
+												then
+													cat "$append_file"
+												fi
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+												echo " $uuidcol > '${a}${b}${c}${d}${e}${f}${g}7-7777-7777-7777-777777777777' AND $uuidcol <= '${a}${b}${c}${d}${e}${f}${g}9-9999-9999-9999-999999999999'"
+												if [ $appendset = true ]
+												then
+													cat "$append_file"
+												fi
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+												echo " $uuidcol > '${a}${b}${c}${d}${e}${f}${g}9-9999-9999-9999-999999999999' AND $uuidcol <= '${a}${b}${c}${d}${e}${f}${g}b-bbbb-bbbb-bbbb-bbbbbbbbbbbb'"
+												if [ $appendset = true ]
+												then
+													cat "$append_file"
+												fi
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+												echo " $uuidcol > '${a}${b}${c}${d}${e}${f}${g}b-bbbb-bbbb-bbbb-bbbbbbbbbbbb' AND $uuidcol <= '${a}${b}${c}${d}${e}${f}${g}d-dddd-dddd-dddd-dddddddddddd'"
+												if [ $appendset = true ]
+												then
+													cat "$append_file"
+												fi
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+												echo " $uuidcol > '${a}${b}${c}${d}${e}${f}${g}d-dddd-dddd-dddd-dddddddddddd' AND $uuidcol <= '${a}${b}${c}${d}${e}${f}${g}f-ffff-ffff-ffff-ffffffffffff'"
+												if [ $appendset = true ]
+												then
+													cat "$append_file"
+												fi
+												;;
+											*)
+					if [ $prependset = true ]
+					then
+						cat "$prepend_file"
+					fi
+												echo " $uuidcol > '${a}${b}${c}${d}${e}${f}${g}0-0000-0000-0000-000000000000' AND $uuidcol <= '${a}${b}${c}${d}${e}${f}${g}f-ffff-ffff-ffff-ffffffffffff'"
+												if [ $appendset = true ]
+												then
+													cat "$append_file"
+												fi
+												;;
+										esac
+									done
+								done
+							done
+						done
+					done
+				done
+			done
+			;;
+		*)
+			echo "Too many partitions. Aborting!"
+			exit 1
+			;;
+	esac
+
+}
+
+parse_args "$@"
+
+echo $target_nbatch
+
+calculate_nbatch
+
+echo $target_nbatch
+
+calculate_sixteens
+
+echo $sixteens
+echo $remainder
+
+gen_uuid_pairs
