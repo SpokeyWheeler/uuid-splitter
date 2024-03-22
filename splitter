@@ -38,6 +38,11 @@ parse_args() {
 	totalset=false
 	uuidcol=""
 
+	if [ $# -eq 0 ]
+	then
+		usage
+	fi
+
 	while getopts :a:b:n:p:t:u: flag
 	do
 	    case "${flag}" in
@@ -63,20 +68,12 @@ parse_args() {
 			;;
 		u)
 			uuidcol="${OPTARG}"
-			echo "$OPTARG ?"
 			;;
 		*)
 			usage
 			;;
 	    esac
 	done
-
-	echo $totalset
-	echo $sizeset
-	echo $batchset
-	echo $prependset
-	echo $appendset
-	echo "$uuidcol"
 
 	if [ $totalset = true ] && [ $sizeset = true ]
         then
@@ -107,8 +104,6 @@ calculate_sixteens() {
                 then
                         sixteens=$(( sixteens + 1 ))
                         remainder=$(( remainder / 16 ))
-echo $sixteens
-echo $remainder
                 else
                         break 2
                 fi
@@ -1387,15 +1382,8 @@ gen_uuid_pairs() {
 
 parse_args "$@"
 
-echo $target_nbatch
-
 calculate_nbatch
 
-echo $target_nbatch
-
 calculate_sixteens
-
-echo $sixteens
-echo $remainder
 
 gen_uuid_pairs
